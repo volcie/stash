@@ -226,9 +226,17 @@ func (s *S3Client) parseKey(key string) *BackupInfo {
 	}
 
 	timestamp := strings.TrimSuffix(filename, ".tar.gz")
+
+	// Validate that the filename is just a timestamp (no extra parts like service-path-timestamp)
+	// Expected format: YYYYMMDD-HHMMSS (exactly 15 characters)
+	if len(timestamp) != 15 || timestamp[8] != '-' {
+		// Not a valid timestamp format, silently skip (probably old backup format)
+		return nil
+	}
+
 	date, err := time.Parse("20060102-150405", timestamp)
 	if err != nil {
-		logrus.Warnf("Failed to parse timestamp from key %s: %v", key, err)
+		// Invalid timestamp format, silently skip
 		return nil
 	}
 
