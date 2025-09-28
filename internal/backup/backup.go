@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/volcie/stash/internal/archive"
 	"github.com/volcie/stash/internal/cleanup"
@@ -156,13 +157,40 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
 
-	// Create archive
+	// Create archive with progress bar
 	archiver := archive.NewArchiver(s.cfg.Backup.Compression, s.cfg.Backup.PreserveACLs)
-	stats, err := archiver.CreateArchive(tempFile, pathLocation, includeFolders)
+
+	// Count files for progress tracking
+	fileCount, err := archiver.CountFiles(pathLocation, includeFolders)
+	if err != nil {
+		logrus.Warnf("Failed to count files for progress tracking: %v", err)
+		fileCount = 100 // Fallback estimate
+	}
+
+	// Create progress bar
+	progressBar := progressbar.NewOptions(fileCount,
+		progressbar.OptionSetDescription(fmt.Sprintf("📦 Compressing %s/%s", serviceName, pathName)),
+		progressbar.OptionSetWidth(40),
+		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "█",
+			SaucerHead:    "█",
+			SaucerPadding: "░",
+			BarStart:      "|",
+			BarEnd:        "|",
+		}),
+	)
+
+	stats, err := archiver.CreateArchiveWithProgress(tempFile, pathLocation, includeFolders, progressBar)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to create archive: %w", err)
 		return result
 	}
+
+	// Finish progress bar
+	progressBar.Finish()
+	fmt.Println() // Add newline after progress bar
 
 	// Get file size
 	fileInfo, err := tempFile.Stat()
@@ -185,12 +213,30 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 		return result
 	}
 
-	// Upload to S3
+	// Upload to S3 with progress bar
+	uploadProgressBar := progressbar.NewOptions(int(result.ArchiveSize),
+		progressbar.OptionSetDescription(fmt.Sprintf("☁️  Uploading %s/%s to S3", serviceName, pathName)),
+		progressbar.OptionSetWidth(40),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "█",
+			SaucerHead:    "█",
+			SaucerPadding: "░",
+			BarStart:      "|",
+			BarEnd:        "|",
+		}),
+	)
+
 	backupInfo, err := s.s3Client.Upload(ctx, tempFile, serviceName, pathName)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to upload to S3: %w", err)
 		return result
 	}
+
+	// Complete upload progress bar
+	uploadProgressBar.Set(int(result.ArchiveSize))
+	uploadProgressBar.Finish()
+	fmt.Println() // Add newline after progress bar
 
 	result.BackupInfo = backupInfo
 	result.Duration = time.Since(startTime)

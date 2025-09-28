@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/volcie/stash/internal/archive"
 	"github.com/volcie/stash/internal/config"
@@ -208,7 +209,20 @@ func (s *Service) restoreBackup(ctx context.Context, backup *storage.BackupInfo,
 		return result
 	}
 
-	// Download from S3
+	// Download from S3 with progress bar
+	downloadProgressBar := progressbar.NewOptions(int(backup.Size),
+		progressbar.OptionSetDescription(fmt.Sprintf("⬇️  Downloading %s/%s", backup.Service, backup.Path)),
+		progressbar.OptionSetWidth(40),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "█",
+			SaucerHead:    "█",
+			SaucerPadding: "░",
+			BarStart:      "|",
+			BarEnd:        "|",
+		}),
+	)
+
 	reader, err := s.s3Client.Download(ctx, backup.Key)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to download backup: %w", err)
@@ -216,12 +230,35 @@ func (s *Service) restoreBackup(ctx context.Context, backup *storage.BackupInfo,
 	}
 	defer reader.Close()
 
-	// Extract archive
+	// Complete download progress bar
+	downloadProgressBar.Set(int(backup.Size))
+	downloadProgressBar.Finish()
+	fmt.Println() // Add newline after progress bar
+
+	// Extract archive with progress bar
+	// Note: For extraction, we use an indeterminate progress bar since tar doesn't provide total count upfront
+	extractProgressBar := progressbar.NewOptions(-1,
+		progressbar.OptionSetDescription(fmt.Sprintf("📂 Extracting %s/%s", backup.Service, backup.Path)),
+		progressbar.OptionSetWidth(40),
+		progressbar.OptionSpinnerType(14),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "█",
+			SaucerHead:    "█",
+			SaucerPadding: "░",
+			BarStart:      "|",
+			BarEnd:        "|",
+		}),
+	)
+
 	archiver := archive.NewArchiver(s.cfg.Backup.Compression, s.cfg.Backup.PreserveACLs)
-	if err := archiver.ExtractArchive(reader, destPath); err != nil {
+	if err := archiver.ExtractArchiveWithProgress(reader, destPath, extractProgressBar); err != nil {
 		result.Error = fmt.Errorf("failed to extract archive: %w", err)
 		return result
 	}
+
+	// Finish extraction progress bar
+	extractProgressBar.Finish()
+	fmt.Println() // Add newline after progress bar
 
 	result.Duration = time.Since(startTime)
 
@@ -268,12 +305,29 @@ func (s *Service) restoreFromLocal(opts *RestoreOptions) ([]*RestoreResult, erro
 		return []*RestoreResult{result}, nil
 	}
 
-	// Extract archive
+	// Extract archive with progress bar
+	extractProgressBar := progressbar.NewOptions(-1,
+		progressbar.OptionSetDescription(fmt.Sprintf("📂 Extracting %s", filepath.Base(opts.FromLocal))),
+		progressbar.OptionSetWidth(40),
+		progressbar.OptionSpinnerType(14),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "█",
+			SaucerHead:    "█",
+			SaucerPadding: "░",
+			BarStart:      "|",
+			BarEnd:        "|",
+		}),
+	)
+
 	archiver := archive.NewArchiver(s.cfg.Backup.Compression, s.cfg.Backup.PreserveACLs)
-	if err := archiver.ExtractArchive(file, destPath); err != nil {
+	if err := archiver.ExtractArchiveWithProgress(file, destPath, extractProgressBar); err != nil {
 		result.Error = fmt.Errorf("failed to extract archive: %w", err)
 		return []*RestoreResult{result}, nil
 	}
+
+	// Finish extraction progress bar
+	extractProgressBar.Finish()
+	fmt.Println() // Add newline after progress bar
 
 	result.Duration = time.Since(startTime)
 

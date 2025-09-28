@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -34,6 +35,10 @@ func NewArchiver(compression, preserveACLs bool) *Archiver {
 }
 
 func (a *Archiver) CreateArchive(writer io.Writer, sourcePath string, includeFolders []string) (*ArchiveStats, error) {
+	return a.CreateArchiveWithProgress(writer, sourcePath, includeFolders, nil)
+}
+
+func (a *Archiver) CreateArchiveWithProgress(writer io.Writer, sourcePath string, includeFolders []string, progressBar *progressbar.ProgressBar) (*ArchiveStats, error) {
 	stats := &ArchiveStats{}
 
 	var finalWriter io.Writer = writer
@@ -122,6 +127,11 @@ func (a *Archiver) CreateArchive(writer io.Writer, sourcePath string, includeFol
 			stats.TotalSize += written
 			stats.FilesProcessed++
 
+			// Update progress bar if provided
+			if progressBar != nil {
+				progressBar.Add(1)
+			}
+
 			logrus.Debugf("Added file: %s (%d bytes)", relPath, written)
 		}
 
@@ -149,6 +159,10 @@ func (a *Archiver) CreateArchive(writer io.Writer, sourcePath string, includeFol
 }
 
 func (a *Archiver) ExtractArchive(reader io.Reader, destPath string) error {
+	return a.ExtractArchiveWithProgress(reader, destPath, nil)
+}
+
+func (a *Archiver) ExtractArchiveWithProgress(reader io.Reader, destPath string, progressBar *progressbar.ProgressBar) error {
 	var finalReader io.Reader = reader
 
 	// Try to detect if it's gzipped
@@ -216,6 +230,11 @@ func (a *Archiver) ExtractArchive(reader io.Reader, destPath string) error {
 					logrus.Debugf("Restored ACL for %s", header.Name)
 				}
 			}
+		}
+
+		// Update progress bar if provided
+		if progressBar != nil {
+			progressBar.Add(1)
 		}
 	}
 
@@ -412,4 +431,31 @@ func (a *Archiver) setWindowsACL(path, aclData string) error {
 	}
 
 	return nil
+}
+
+// CountFiles counts the number of files that will be processed for progress tracking
+func (a *Archiver) CountFiles(sourcePath string, includeFolders []string) (int, error) {
+	count := 0
+	err := filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue processing other files
+		}
+
+		// Skip if we have include filters and this path doesn't match
+		if len(includeFolders) > 0 && !a.shouldInclude(path, sourcePath, includeFolders) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Count regular files
+		if info.Mode().IsRegular() {
+			count++
+		}
+
+		return nil
+	})
+
+	return count, err
 }
