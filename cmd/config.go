@@ -128,6 +128,7 @@ services:
         - configs
 
 retention: 14
+auto_cleanup: true
 
 notifications:
   discord_webhook: 'https://discord.com/api/webhooks/...'

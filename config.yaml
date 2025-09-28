@@ -16,6 +16,7 @@ services:
       # since 'config' doesnt have an `include_folders`
       # it will backup everything in /path/to/service_config
 retention: 14 # days
+auto_cleanup: true # automatically clean up old backups after each backup operation
 
 notifications:
   discord_webhook: 'discord webhook url'

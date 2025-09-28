@@ -11,6 +11,7 @@ type Config struct {
 	S3            S3Config           `mapstructure:"s3"`
 	Services      map[string]Service `mapstructure:"services"`
 	Retention     int                `mapstructure:"retention"`
+	AutoCleanup   bool               `mapstructure:"auto_cleanup"`
 	Notifications NotificationConfig `mapstructure:"notifications"`
 	Backup        BackupConfig       `mapstructure:"backup"`
 }

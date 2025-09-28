@@ -8,6 +8,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/volcie/stash/internal/archive"
+	"github.com/volcie/stash/internal/cleanup"
 	"github.com/volcie/stash/internal/config"
 	"github.com/volcie/stash/internal/notifications"
 	"github.com/volcie/stash/internal/storage"
@@ -88,6 +89,11 @@ func (s *Service) BackupService(ctx context.Context, serviceName string, specifi
 		} else {
 			s.sendNotification(notifications.Success, serviceName, "backup", result, nil)
 		}
+	}
+
+	// Auto-cleanup old backups if enabled and backup was successful
+	if s.cfg.AutoCleanup {
+		s.performAutoCleanup(ctx, serviceName, results)
 	}
 
 	return results, nil
@@ -231,4 +237,57 @@ func formatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// performAutoCleanup runs cleanup for the specified service only if the backup was successful
+func (s *Service) performAutoCleanup(ctx context.Context, serviceName string, results []*BackupResult) {
+	// Only run cleanup if at least one backup was successful
+	hasSuccessfulBackup := false
+	for _, result := range results {
+		if result.Error == nil {
+			hasSuccessfulBackup = true
+			break
+		}
+	}
+
+	if !hasSuccessfulBackup {
+		logrus.Debugf("Skipping auto-cleanup for service %s - no successful backups", serviceName)
+		return
+	}
+
+	logrus.Infof("Auto-cleanup enabled, cleaning up old backups for service: %s", serviceName)
+
+	// Create cleanup service and run cleanup for this specific service
+	cleanupService, err := cleanup.NewService(s.cfg, s.notifier == nil) // Use same no-notify setting as backup
+	if err != nil {
+		logrus.Warnf("Failed to initialize cleanup service for auto-cleanup: %v", err)
+		return
+	}
+
+	// Run cleanup for this specific service only
+	cleanupOpts := &cleanup.CleanupOptions{
+		ServiceName: serviceName,
+		OlderThan:   s.cfg.Retention, // Use configured retention period
+		DryRun:      false,           // Actually perform cleanup
+		KeepLatest:  1,               // Always keep at least the latest backup
+	}
+
+	result, err := cleanupService.CleanupBackups(ctx, cleanupOpts)
+	if err != nil {
+		logrus.Warnf("Auto-cleanup failed for service %s: %v", serviceName, err)
+		return
+	}
+
+	if result.Error != nil {
+		logrus.Warnf("Auto-cleanup encountered error for service %s: %v", serviceName, result.Error)
+		return
+	}
+
+	// Log cleanup results
+	deletedCount := len(result.DeletedBackups)
+	if deletedCount > 0 {
+		logrus.Infof("Auto-cleanup completed: removed %d old backups for service %s", deletedCount, serviceName)
+	} else {
+		logrus.Debugf("Auto-cleanup completed: no old backups to remove for service %s", serviceName)
+	}
 }
