@@ -8,6 +8,10 @@
 *.so
 *.dylib
 
+# build directories
+build
+dist
+
 .claude
 
 # Test binary, built with `go test -c`
@@ -31,4 +35,4 @@ go.work.sum
 
 # Editor/IDE
 # .idea/
-# .vscode/
+.vscode/
