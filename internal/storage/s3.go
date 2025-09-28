@@ -63,6 +63,10 @@ func NewS3Client(bucket, prefix string) (*S3Client, error) {
 
 func (s *S3Client) Upload(ctx context.Context, reader io.Reader, service, pathName string) (*BackupInfo, error) {
 	timestamp := time.Now().Format("20060102-150405")
+	return s.UploadWithTimestamp(ctx, reader, service, pathName, timestamp)
+}
+
+func (s *S3Client) UploadWithTimestamp(ctx context.Context, reader io.Reader, service, pathName, timestamp string) (*BackupInfo, error) {
 	key := s.buildKey(service, pathName, timestamp)
 
 	logrus.Infof("Uploading backup to s3://%s/%s", s.bucket, key)

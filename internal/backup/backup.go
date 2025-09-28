@@ -81,8 +81,11 @@ func (s *Service) BackupService(ctx context.Context, serviceName string, specifi
 
 	logrus.Infof("Starting backup for service: %s (%d paths)", serviceName, len(pathsToBackup))
 
+	// Generate consistent timestamp for all paths in this service backup
+	timestamp := time.Now().Format("20060102-150405")
+
 	for pathName, pathLocation := range pathsToBackup {
-		result := s.backupPath(ctx, serviceName, pathName, pathLocation, serviceConfig.IncludeFolders[pathName])
+		result := s.backupPathWithTimestamp(ctx, serviceName, pathName, pathLocation, serviceConfig.IncludeFolders[pathName], timestamp)
 		results = append(results, result)
 
 		// Send individual notifications for each path
@@ -123,7 +126,7 @@ func (s *Service) BackupAll(ctx context.Context, specificPaths []string) (map[st
 	return allResults, nil
 }
 
-func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLocation string, includeFolders []string) *BackupResult {
+func (s *Service) backupPathWithTimestamp(ctx context.Context, serviceName, pathName, pathLocation string, includeFolders []string, timestamp string) *BackupResult {
 	startTime := time.Now()
 
 	result := &BackupResult{
@@ -236,7 +239,7 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 		progressBar: uploadProgressBar,
 	}
 
-	backupInfo, err := s.s3Client.Upload(ctx, progressReader, serviceName, pathName)
+	backupInfo, err := s.s3Client.UploadWithTimestamp(ctx, progressReader, serviceName, pathName, timestamp)
 	if err != nil {
 		// If upload with progress tracking fails, try without it
 		logrus.Warnf("Upload with progress tracking failed, retrying without progress: %v", err)
@@ -249,7 +252,7 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 		}
 
 		// Try upload without progress wrapper
-		backupInfo, err = s.s3Client.Upload(ctx, tempFile, serviceName, pathName)
+		backupInfo, err = s.s3Client.UploadWithTimestamp(ctx, tempFile, serviceName, pathName, timestamp)
 		if err != nil {
 			result.Error = fmt.Errorf("failed to upload to S3: %w", err)
 			return result
