@@ -110,11 +110,13 @@ func (s *Service) RestoreService(ctx context.Context, opts *RestoreOptions) ([]*
 		result := s.restoreBackup(ctx, backup, destPath, opts)
 		results = append(results, result)
 
-		// Send notifications
-		if result.Error != nil {
-			s.sendNotification(notifications.Error, opts.ServiceName, "restore", result, result.Error)
-		} else {
-			s.sendNotification(notifications.Success, opts.ServiceName, "restore", result, nil)
+		// Send notifications (skip during dry run)
+		if !opts.DryRun {
+			if result.Error != nil {
+				s.sendNotification(notifications.Error, opts.ServiceName, "restore", result, result.Error)
+			} else {
+				s.sendNotification(notifications.Success, opts.ServiceName, "restore", result, nil)
+			}
 		}
 	}
 

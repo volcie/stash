@@ -10,7 +10,7 @@ stash
 │   ├── --from-local PATH       # Flag: restore from local file
 │   ├── --date YYYYMMDD         # Flag: specific backup date (can take YYYYMMDD-HHMMSS)
 │   ├── --latest                # Flag: use latest backup (default)
-│   ├── --dry-run               # Flag: show what would be restored
+│   ├── --dry-run               # Flag: show what would be restored (won't trigger notifications)
 │   └── --force                 # Flag: skip confirmation prompts
 │
 ├── list
