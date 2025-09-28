@@ -3,6 +3,7 @@ package restore
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -212,8 +213,9 @@ func (s *Service) restoreBackup(ctx context.Context, backup *storage.BackupInfo,
 	}
 
 	// Download from S3 with progress bar
+	fmt.Println() // Add line break before progress bar
 	downloadProgressBar := progressbar.NewOptions(int(backup.Size),
-		progressbar.OptionSetDescription(fmt.Sprintf("⬇️  Downloading %s/%s", backup.Service, backup.Path)),
+		progressbar.OptionSetDescription(fmt.Sprintf("Downloading %s/%s", backup.Service, backup.Path)),
 		progressbar.OptionSetWidth(40),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetTheme(progressbar.Theme{
@@ -232,15 +234,23 @@ func (s *Service) restoreBackup(ctx context.Context, backup *storage.BackupInfo,
 	}
 	defer reader.Close()
 
-	// Complete download progress bar
-	downloadProgressBar.Set(int(backup.Size))
-	downloadProgressBar.Finish()
-	fmt.Println() // Add newline after progress bar
+	// Wrap reader with progress tracking
+	progressReader := &progressReadCloser{
+		ReadCloser:  reader,
+		progressBar: downloadProgressBar,
+	}
+
+	// Use progress reader for extraction
+	defer func() {
+		downloadProgressBar.Finish()
+		fmt.Println() // Add newline after progress bar
+	}()
 
 	// Extract archive with progress bar
 	// Note: For extraction, we use an indeterminate progress bar since tar doesn't provide total count upfront
+	fmt.Println() // Add line break before progress bar
 	extractProgressBar := progressbar.NewOptions(-1,
-		progressbar.OptionSetDescription(fmt.Sprintf("📂 Extracting %s/%s", backup.Service, backup.Path)),
+		progressbar.OptionSetDescription(fmt.Sprintf("Extracting %s/%s", backup.Service, backup.Path)),
 		progressbar.OptionSetWidth(40),
 		progressbar.OptionSpinnerType(14),
 		progressbar.OptionSetTheme(progressbar.Theme{
@@ -253,7 +263,7 @@ func (s *Service) restoreBackup(ctx context.Context, backup *storage.BackupInfo,
 	)
 
 	archiver := archive.NewArchiver(s.cfg.Backup.Compression, s.cfg.Backup.PreserveACLs)
-	if err := archiver.ExtractArchiveWithProgress(reader, destPath, extractProgressBar); err != nil {
+	if err := archiver.ExtractArchiveWithProgress(progressReader, destPath, extractProgressBar); err != nil {
 		result.Error = fmt.Errorf("failed to extract archive: %w", err)
 		return result
 	}
@@ -308,8 +318,9 @@ func (s *Service) restoreFromLocal(opts *RestoreOptions) ([]*RestoreResult, erro
 	}
 
 	// Extract archive with progress bar
+	fmt.Println() // Add line break before progress bar
 	extractProgressBar := progressbar.NewOptions(-1,
-		progressbar.OptionSetDescription(fmt.Sprintf("📂 Extracting %s", filepath.Base(opts.FromLocal))),
+		progressbar.OptionSetDescription(fmt.Sprintf("Extracting %s", filepath.Base(opts.FromLocal))),
 		progressbar.OptionSetWidth(40),
 		progressbar.OptionSpinnerType(14),
 		progressbar.OptionSetTheme(progressbar.Theme{
@@ -379,4 +390,18 @@ func (s *Service) parseDate(dateStr string) (time.Time, bool, error) {
 	}
 
 	return time.Time{}, false, fmt.Errorf("invalid date format: expected YYYYMMDD or YYYYMMDD-HHMMSS, got %s", dateStr)
+}
+
+// progressReadCloser wraps an io.ReadCloser to update a progress bar as data is read
+type progressReadCloser struct {
+	io.ReadCloser
+	progressBar *progressbar.ProgressBar
+}
+
+func (prc *progressReadCloser) Read(p []byte) (n int, err error) {
+	n, err = prc.ReadCloser.Read(p)
+	if n > 0 && prc.progressBar != nil {
+		prc.progressBar.Add(n)
+	}
+	return n, err
 }

@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -168,8 +169,9 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 	}
 
 	// Create progress bar
+	fmt.Println() // Add line break before progress bar
 	progressBar := progressbar.NewOptions(fileCount,
-		progressbar.OptionSetDescription(fmt.Sprintf("📦 Compressing %s/%s", serviceName, pathName)),
+		progressbar.OptionSetDescription(fmt.Sprintf("Compressing %s/%s", serviceName, pathName)),
 		progressbar.OptionSetWidth(40),
 		progressbar.OptionShowCount(),
 		progressbar.OptionShowIts(),
@@ -214,8 +216,9 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 	}
 
 	// Upload to S3 with progress bar
+	fmt.Println() // Add line break before progress bar
 	uploadProgressBar := progressbar.NewOptions(int(result.ArchiveSize),
-		progressbar.OptionSetDescription(fmt.Sprintf("☁️  Uploading %s/%s to S3", serviceName, pathName)),
+		progressbar.OptionSetDescription(fmt.Sprintf("Uploading %s/%s to S3", serviceName, pathName)),
 		progressbar.OptionSetWidth(40),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetTheme(progressbar.Theme{
@@ -227,14 +230,19 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 		}),
 	)
 
-	backupInfo, err := s.s3Client.Upload(ctx, tempFile, serviceName, pathName)
+	// Create a progress reader wrapper
+	progressReader := &progressReader{
+		reader:      tempFile,
+		progressBar: uploadProgressBar,
+	}
+
+	backupInfo, err := s.s3Client.Upload(ctx, progressReader, serviceName, pathName)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to upload to S3: %w", err)
 		return result
 	}
 
-	// Complete upload progress bar
-	uploadProgressBar.Set(int(result.ArchiveSize))
+	// Finish upload progress bar
 	uploadProgressBar.Finish()
 	fmt.Println() // Add newline after progress bar
 
@@ -336,4 +344,18 @@ func (s *Service) performAutoCleanup(ctx context.Context, serviceName string, re
 	} else {
 		logrus.Debugf("Auto-cleanup completed: no old backups to remove for service %s", serviceName)
 	}
+}
+
+// progressReader wraps an io.Reader to update a progress bar as data is read
+type progressReader struct {
+	reader      io.Reader
+	progressBar *progressbar.ProgressBar
+}
+
+func (pr *progressReader) Read(p []byte) (n int, err error) {
+	n, err = pr.reader.Read(p)
+	if n > 0 && pr.progressBar != nil {
+		pr.progressBar.Add(n)
+	}
+	return n, err
 }
