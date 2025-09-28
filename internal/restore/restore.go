@@ -125,12 +125,21 @@ func (s *Service) selectBackups(backups []*storage.BackupInfo, opts *RestoreOpti
 
 	// Filter by date if specified
 	if opts.Date != "" {
-		targetDate, err := time.Parse("20060102", opts.Date)
+		targetDate, isExactTime, err := s.parseDate(opts.Date)
 		if err != nil {
 			logrus.Warnf("Invalid date format %s, ignoring date filter", opts.Date)
 		} else {
 			for _, backup := range backups {
-				if backup.Date.Format("20060102") == targetDate.Format("20060102") {
+				var matches bool
+				if isExactTime {
+					// Exact timestamp match (YYYYMMDD-HHMMSS)
+					matches = backup.Date.Format("20060102-150405") == targetDate.Format("20060102-150405")
+				} else {
+					// Date only match (YYYYMMDD) - match any backup from that day
+					matches = backup.Date.Format("20060102") == targetDate.Format("20060102")
+				}
+
+				if matches {
 					filtered = append(filtered, backup)
 				}
 			}
@@ -292,4 +301,26 @@ func (s *Service) sendNotification(notifType notifications.NotificationType, ser
 	}
 
 	s.notifier.SendBackupNotification(notifType, serviceName, operation, details, err)
+}
+
+// parseDate parses date string in either YYYYMMDD or YYYYMMDD-HHMMSS format
+// Returns the parsed time, whether it's an exact timestamp (vs date-only), and any error
+func (s *Service) parseDate(dateStr string) (time.Time, bool, error) {
+	// Try full timestamp format first (YYYYMMDD-HHMMSS)
+	if len(dateStr) == 15 && dateStr[8] == '-' {
+		t, err := time.Parse("20060102-150405", dateStr)
+		if err == nil {
+			return t, true, nil // isExactTime = true
+		}
+	}
+
+	// Try date-only format (YYYYMMDD)
+	if len(dateStr) == 8 {
+		t, err := time.Parse("20060102", dateStr)
+		if err == nil {
+			return t, false, nil // isExactTime = false
+		}
+	}
+
+	return time.Time{}, false, fmt.Errorf("invalid date format: expected YYYYMMDD or YYYYMMDD-HHMMSS, got %s", dateStr)
 }

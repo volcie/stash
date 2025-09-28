@@ -38,7 +38,7 @@ func newRestoreCmd() *cobra.Command {
 
 	cmd.Flags().Bool("from-s3", false, "restore from S3 (default if no source specified)")
 	cmd.Flags().String("from-local", "", "restore from local file")
-	cmd.Flags().String("date", "", "specific backup date (YYYYMMDD)")
+	cmd.Flags().String("date", "", "specific backup date (YYYYMMDD or YYYYMMDD-HHMMSS)")
 	cmd.Flags().Bool("latest", false, "use latest backup (default)")
 	cmd.Flags().Bool("dry-run", false, "show what would be restored")
 	cmd.Flags().Bool("force", false, "skip confirmation prompts")
