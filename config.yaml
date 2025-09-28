@@ -1,0 +1,30 @@
+s3:
+  bucket: s3-bucket-name
+  prefix: prefix/inside/bucket
+
+  # backups will be stored in s3://s3-bucket-name/prefix/inside/bucket/[service name]/[path name]/
+services:
+  service-example:
+    paths:
+      service1: /path/to/service1
+      service2: /path/to/service2
+    include_folders:
+      service1:
+        - folders in /path/to/service1
+        - you want
+        - to include in the archive
+      # since service2 doesnt have an `include_folders`
+      # it will backup everything in /path/to/service2
+retention: 14 # days
+
+notifications:
+  discord_webhook: 'discord webhook url'
+  on_success: true
+  on_error: true
+  on_warning: true
+
+backup:
+  temp_dir: /tmp/stash-backups
+  preserve_acls: true
+  compression: true
+  min_size: 1024 # bytes - minimum backup archive size for validation (not source directory size)
