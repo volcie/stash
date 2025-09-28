@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -94,11 +95,17 @@ func (d *DiscordNotifier) SendBackupNotification(notifType NotificationType, ser
 		},
 	}
 
-	// Add detail fields
-	for key, value := range details {
+	// Add detail fields in consistent order
+	var keys []string
+	for key := range details {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
 		embed.Fields = append(embed.Fields, DiscordWebhookEmbedField{
 			Name:   key,
-			Value:  value,
+			Value:  details[key],
 			Inline: true,
 		})
 	}
