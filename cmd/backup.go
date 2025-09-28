@@ -44,7 +44,7 @@ func newBackupCmd() *cobra.Command {
 }
 
 func runBackupService(ctx context.Context, service *backup.Service, serviceName string, paths []string) error {
-	logrus.Infof("Starting backup for service: %s", serviceName)
+	logrus.Debugf("Starting backup for service: %s", serviceName)
 
 	results, err := service.BackupService(ctx, serviceName, paths)
 	if err != nil {
