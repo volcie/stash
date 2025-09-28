@@ -8,11 +8,11 @@ import (
 )
 
 type Config struct {
-	S3           S3Config                `mapstructure:"s3"`
-	Services     map[string]Service      `mapstructure:"services"`
-	Retention    int                     `mapstructure:"retention"`
-	Notifications NotificationConfig     `mapstructure:"notifications"`
-	Backup       BackupConfig           `mapstructure:"backup"`
+	S3            S3Config           `mapstructure:"s3"`
+	Services      map[string]Service `mapstructure:"services"`
+	Retention     int                `mapstructure:"retention"`
+	Notifications NotificationConfig `mapstructure:"notifications"`
+	Backup        BackupConfig       `mapstructure:"backup"`
 }
 
 type S3Config struct {
@@ -33,10 +33,10 @@ type NotificationConfig struct {
 }
 
 type BackupConfig struct {
-	TempDir       string `mapstructure:"temp_dir"`
-	PreserveACLs  bool   `mapstructure:"preserve_acls"`
-	Compression   bool   `mapstructure:"compression"`
-	MinSize       int64  `mapstructure:"min_size"`
+	TempDir      string `mapstructure:"temp_dir"`
+	PreserveACLs bool   `mapstructure:"preserve_acls"`
+	Compression  bool   `mapstructure:"compression"`
+	MinSize      int64  `mapstructure:"min_size"`
 }
 
 var globalConfig *Config

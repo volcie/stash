@@ -22,14 +22,14 @@ type Service struct {
 }
 
 type RestoreOptions struct {
-	ServiceName  string
-	FromS3       bool
-	FromLocal    string
-	Date         string
-	Latest       bool
-	DryRun       bool
-	Force        bool
-	DestPath     string
+	ServiceName string
+	FromS3      bool
+	FromLocal   string
+	Date        string
+	Latest      bool
+	DryRun      bool
+	Force       bool
+	DestPath    string
 }
 
 type RestoreResult struct {

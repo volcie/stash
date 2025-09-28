@@ -23,12 +23,12 @@ type S3Client struct {
 }
 
 type BackupInfo struct {
-	Service   string
-	Path      string
-	Date      time.Time
-	Key       string
-	Size      int64
-	ETag      string
+	Service string
+	Path    string
+	Date    time.Time
+	Key     string
+	Size    int64
+	ETag    string
 }
 
 func NewS3Client(bucket, prefix string) (*S3Client, error) {

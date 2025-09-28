@@ -139,9 +139,9 @@ func printCleanupResults(result *cleanup.CleanupResult, dryRun bool) error {
 		}
 
 		logrus.WithFields(logrus.Fields{
-			"service":        serviceName,
-			"backup_count":   len(serviceBackups),
-			"total_size":     utils.FormatBytes(serviceSize),
+			"service":      serviceName,
+			"backup_count": len(serviceBackups),
+			"total_size":   utils.FormatBytes(serviceSize),
 		}).Infof("Service cleanup complete")
 	}
 

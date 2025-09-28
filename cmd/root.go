@@ -16,9 +16,9 @@ var (
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "stash",
-		Short: "Backup utilities for revolt-rp.net",
-		Long:  "A CLI tool for backing up files to S3 with Discord notifications",
+		Use:          "stash",
+		Short:        "Backup utilities for revolt-rp.net",
+		Long:         "A CLI tool for backing up files to S3 with Discord notifications",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			logrus.SetFormatter(&logrus.TextFormatter{ForceColors: true, DisableTimestamp: true})

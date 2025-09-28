@@ -85,11 +85,11 @@ func printBackupResults(allResults map[string][]*backup.BackupResult) error {
 				hasErrors = true
 			} else {
 				logrus.WithFields(logrus.Fields{
-					"service":      serviceName,
-					"path":         result.Path,
-					"s3_key":       result.BackupInfo.Key,
-					"size_mb":      fmt.Sprintf("%.2f", float64(result.ArchiveSize)/1024/1024),
-					"duration":     result.Duration,
+					"service":  serviceName,
+					"path":     result.Path,
+					"s3_key":   result.BackupInfo.Key,
+					"size_mb":  fmt.Sprintf("%.2f", float64(result.ArchiveSize)/1024/1024),
+					"duration": result.Duration,
 				}).Info("Backup completed successfully")
 				totalSuccess++
 			}
