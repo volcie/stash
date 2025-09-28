@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -63,7 +64,25 @@ func newConfigEditCmd() *cobra.Command {
 
 			editor := os.Getenv("EDITOR")
 			if editor == "" {
-				editor = "notepad"
+				// Use platform-appropriate default editor
+				switch runtime.GOOS {
+				case "windows":
+					editor = "notepad"
+				case "darwin":
+					editor = "open"
+				default: // Linux and other Unix-like systems
+					// Try common editors in order of preference
+					editors := []string{"nano", "vi", "vim", "emacs"}
+					for _, e := range editors {
+						if _, err := exec.LookPath(e); err == nil {
+							editor = e
+							break
+						}
+					}
+					if editor == "" {
+						return fmt.Errorf("no suitable editor found. Please set the EDITOR environment variable or install one of: %v", editors)
+					}
+				}
 			}
 
 			editorCmd := exec.Command(editor, configFile)
