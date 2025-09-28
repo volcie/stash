@@ -18,16 +18,10 @@ GOFLAGS := -trimpath
 # Cross-platform build targets
 PLATFORMS := \
 	windows/amd64 \
-	windows/386 \
 	windows/arm64 \
 	linux/amd64 \
-	linux/386 \
-	linux/arm \
 	linux/arm64 \
-	darwin/amd64 \
 	darwin/arm64 \
-	freebsd/amd64 \
-	openbsd/amd64
 
 # Colors for output
 RED := \033[31m
