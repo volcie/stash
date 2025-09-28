@@ -52,7 +52,7 @@ func NewS3Client(bucket, prefix string) (*S3Client, error) {
 		return nil, fmt.Errorf("failed to connect to S3: %w", err)
 	}
 
-	logrus.Infof("Connected to S3-compatible storage")
+	logrus.Debugf("Connected to S3-compatible storage")
 
 	return &S3Client{
 		client: client,
@@ -277,9 +277,9 @@ func validateS3Environment() error {
 	}
 
 	if endpoint != "" {
-		logrus.Infof("Using custom S3 endpoint: %s", endpoint)
+		logrus.Debugf("Using custom S3 endpoint: %s", endpoint)
 	} else {
-		logrus.Info("Using AWS S3 (no custom endpoint specified)")
+		logrus.Debug("Using AWS S3 (no custom endpoint specified)")
 	}
 
 	logrus.Debugf("S3 Configuration: AccessKey=%s..., Region=%s",
