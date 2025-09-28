@@ -6,15 +6,15 @@ s3:
 services:
   service-example:
     paths:
-      service1: /path/to/service1
-      service2: /path/to/service2
+      data: /path/to/service_data
+      config: /path/to/service_config
     include_folders:
-      service1:
-        - folders in /path/to/service1
+      data:
+        - folders in /path/to/service_data
         - you want
         - to include in the archive
-      # since service2 doesnt have an `include_folders`
-      # it will backup everything in /path/to/service2
+      # since 'config' doesnt have an `include_folders`
+      # it will backup everything in /path/to/service_config
 retention: 14 # days
 
 notifications:
