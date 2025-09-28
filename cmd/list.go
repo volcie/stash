@@ -15,8 +15,9 @@ import (
 
 func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List available backups",
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List available backups",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Get()
 			if cfg == nil {
@@ -84,7 +85,7 @@ func listS3Backups(cfg *config.Config, serviceName string) error {
 	}
 
 	// List command output should go to stdout for user consumption
-	logrus.Printf("S3 Backups (s3://%s/%s)\n\n", cfg.S3.Bucket, cfg.S3.Prefix)
+	logrus.Debugf("S3 Backups (s3://%s/%s)\n\n", cfg.S3.Bucket, cfg.S3.Prefix)
 
 	for service, serviceBackups := range serviceGroups {
 		logrus.Printf("%s (%d backups)\n", service, len(serviceBackups))
