@@ -240,7 +240,8 @@ func (s *Service) restoreBackup(ctx context.Context, backup *storage.BackupInfo,
 		progressBar: downloadProgressBar,
 	}
 
-	// Use progress reader for extraction
+	// Use progress reader for extraction (with fallback to original reader if needed)
+	var extractionReader io.Reader = progressReader
 	defer func() {
 		downloadProgressBar.Finish()
 		fmt.Println() // Add newline after progress bar
@@ -263,7 +264,7 @@ func (s *Service) restoreBackup(ctx context.Context, backup *storage.BackupInfo,
 	)
 
 	archiver := archive.NewArchiver(s.cfg.Backup.Compression, s.cfg.Backup.PreserveACLs)
-	if err := archiver.ExtractArchiveWithProgress(progressReader, destPath, extractProgressBar); err != nil {
+	if err := archiver.ExtractArchiveWithProgress(extractionReader, destPath, extractProgressBar); err != nil {
 		result.Error = fmt.Errorf("failed to extract archive: %w", err)
 		return result
 	}

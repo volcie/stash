@@ -190,9 +190,9 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 		return result
 	}
 
-	// Finish progress bar
+	// Finish progress bar and add newline
 	progressBar.Finish()
-	fmt.Println() // Add newline after progress bar
+	fmt.Print("\n") // Add newline after progress bar
 
 	// Get file size
 	fileInfo, err := tempFile.Stat()
@@ -230,7 +230,7 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 		}),
 	)
 
-	// Create a progress reader wrapper
+	// Try uploading with progress tracking first
 	progressReader := &progressReader{
 		reader:      tempFile,
 		progressBar: uploadProgressBar,
@@ -238,8 +238,25 @@ func (s *Service) backupPath(ctx context.Context, serviceName, pathName, pathLoc
 
 	backupInfo, err := s.s3Client.Upload(ctx, progressReader, serviceName, pathName)
 	if err != nil {
-		result.Error = fmt.Errorf("failed to upload to S3: %w", err)
-		return result
+		// If upload with progress tracking fails, try without it
+		logrus.Warnf("Upload with progress tracking failed, retrying without progress: %v", err)
+		uploadProgressBar.Describe("Uploading (fallback mode)")
+
+		// Reset file position
+		if _, seekErr := tempFile.Seek(0, 0); seekErr != nil {
+			result.Error = fmt.Errorf("failed to seek temp file for retry: %w", seekErr)
+			return result
+		}
+
+		// Try upload without progress wrapper
+		backupInfo, err = s.s3Client.Upload(ctx, tempFile, serviceName, pathName)
+		if err != nil {
+			result.Error = fmt.Errorf("failed to upload to S3: %w", err)
+			return result
+		}
+
+		// Complete progress bar manually since we couldn't track it
+		uploadProgressBar.Set(int(result.ArchiveSize))
 	}
 
 	// Finish upload progress bar
@@ -358,4 +375,20 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 		pr.progressBar.Add(n)
 	}
 	return n, err
+}
+
+// Implement io.Seeker if the underlying reader supports it
+func (pr *progressReader) Seek(offset int64, whence int) (int64, error) {
+	if seeker, ok := pr.reader.(io.Seeker); ok {
+		return seeker.Seek(offset, whence)
+	}
+	return 0, fmt.Errorf("underlying reader does not support seeking")
+}
+
+// Implement io.Closer if the underlying reader supports it
+func (pr *progressReader) Close() error {
+	if closer, ok := pr.reader.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
 }
