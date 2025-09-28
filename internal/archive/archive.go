@@ -3,17 +3,20 @@ package archive
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 )
 
 type Archiver struct {
-	compression bool
+	compression  bool
 	preserveACLs bool
 }
 
@@ -80,6 +83,21 @@ func (a *Archiver) CreateArchive(writer io.Writer, sourcePath string, includeFol
 		}
 
 		header.Name = relPath
+
+		// Add ACL information to PAX headers if ACL preservation is enabled
+		if a.preserveACLs {
+			aclData, err := a.getFileACL(path)
+			if err != nil {
+				logrus.Warnf("Failed to get ACL for %s: %v", path, err)
+			} else if aclData != "" {
+				if header.PAXRecords == nil {
+					header.PAXRecords = make(map[string]string)
+				}
+				header.PAXRecords["STASH.acl"] = aclData
+				header.Format = tar.FormatPAX // Ensure we use PAX format for extended attributes
+				logrus.Debugf("Stored ACL for %s", relPath)
+			}
+		}
 
 		// Write header
 		if err := tarWriter.WriteHeader(header); err != nil {
@@ -187,6 +205,18 @@ func (a *Archiver) ExtractArchive(reader io.Reader, destPath string) error {
 		default:
 			logrus.Warnf("Unsupported file type for %s: %c", header.Name, header.Typeflag)
 		}
+
+		// Restore ACL information if present
+		if a.preserveACLs && header.PAXRecords != nil {
+			if aclData, exists := header.PAXRecords["STASH.acl"]; exists && aclData != "" {
+				if err := a.setFileACL(targetPath, aclData); err != nil {
+					logrus.Warnf("Failed to restore ACL for %s: %v", targetPath, err)
+					// Continue processing - ACL restoration failure shouldn't stop extraction
+				} else {
+					logrus.Debugf("Restored ACL for %s", header.Name)
+				}
+			}
+		}
 	}
 
 	logrus.Info("Archive extracted successfully")
@@ -220,4 +250,166 @@ func (a *Archiver) shouldInclude(path, basePath string, includeFolders []string)
 	}
 
 	return false
+}
+
+// getFileACL extracts ACL information from a file in a platform-specific way
+func (a *Archiver) getFileACL(path string) (string, error) {
+	if !a.preserveACLs {
+		return "", nil
+	}
+
+	switch runtime.GOOS {
+	case "linux", "darwin", "freebsd":
+		return a.getUnixACL(path)
+	case "windows":
+		return a.getWindowsACL(path)
+	default:
+		logrus.Debugf("ACL preservation not supported on %s", runtime.GOOS)
+		return "", nil
+	}
+}
+
+// setFileACL applies ACL information to a file in a platform-specific way
+func (a *Archiver) setFileACL(path, aclData string) error {
+	if !a.preserveACLs || aclData == "" {
+		return nil
+	}
+
+	switch runtime.GOOS {
+	case "linux", "darwin", "freebsd":
+		return a.setUnixACL(path, aclData)
+	case "windows":
+		return a.setWindowsACL(path, aclData)
+	default:
+		logrus.Debugf("ACL preservation not supported on %s", runtime.GOOS)
+		return nil
+	}
+}
+
+// getUnixACL gets ACL data using getfacl command
+func (a *Archiver) getUnixACL(path string) (string, error) {
+	// Check if getfacl is available
+	if _, err := exec.LookPath("getfacl"); err != nil {
+		logrus.Debugf("getfacl command not found, skipping ACL extraction")
+		return "", nil
+	}
+
+	cmd := exec.Command("getfacl", "-p", path)
+	output, err := cmd.Output()
+	if err != nil {
+		// getfacl might fail if file doesn't have extended ACLs or other issues
+		logrus.Debugf("Failed to get ACL for %s: %v", path, err)
+		return "", nil
+	}
+
+	// Only store if we actually got meaningful ACL data
+	if len(output) > 0 {
+		// Base64 encode the ACL data for safe storage in tar headers
+		return base64.StdEncoding.EncodeToString(output), nil
+	}
+
+	return "", nil
+}
+
+// setUnixACL sets ACL data using setfacl command
+func (a *Archiver) setUnixACL(path, aclData string) error {
+	// Check if setfacl is available
+	if _, err := exec.LookPath("setfacl"); err != nil {
+		logrus.Debugf("setfacl command not found, skipping ACL restoration")
+		return nil
+	}
+
+	// Decode the base64 ACL data
+	decoded, err := base64.StdEncoding.DecodeString(aclData)
+	if err != nil {
+		return fmt.Errorf("failed to decode ACL data: %w", err)
+	}
+
+	// Create a temporary file with ACL rules
+	tmpFile, err := os.CreateTemp("", "acl_rules")
+	if err != nil {
+		return fmt.Errorf("failed to create temp ACL file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(decoded); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write ACL rules: %w", err)
+	}
+	tmpFile.Close()
+
+	// Apply ACL using setfacl
+	cmd := exec.Command("setfacl", "--restore", tmpFile.Name())
+	if err := cmd.Run(); err != nil {
+		logrus.Warnf("Failed to set ACL for %s: %v", path, err)
+		return nil // Don't fail the entire operation for ACL issues
+	}
+
+	return nil
+}
+
+// getWindowsACL gets Windows ACL data using icacls command
+func (a *Archiver) getWindowsACL(path string) (string, error) {
+	// Check if icacls is available
+	if _, err := exec.LookPath("icacls"); err != nil {
+		logrus.Debugf("icacls command not found, skipping ACL extraction")
+		return "", nil
+	}
+
+	// Use icacls to get ACL data
+	// Note: A more robust implementation would use the Windows API directly
+	cmd := exec.Command("icacls", path, "/save", "-")
+	output, err := cmd.Output()
+	if err != nil {
+		logrus.Debugf("Failed to get Windows ACL for %s: %v", path, err)
+		return "", nil
+	}
+
+	// Only store if we got meaningful data
+	if len(output) > 0 {
+		return base64.StdEncoding.EncodeToString(output), nil
+	}
+
+	return "", nil
+}
+
+// setWindowsACL sets Windows ACL data using icacls command
+func (a *Archiver) setWindowsACL(path, aclData string) error {
+	if aclData == "" {
+		return nil
+	}
+
+	// Check if icacls is available
+	if _, err := exec.LookPath("icacls"); err != nil {
+		logrus.Debugf("icacls command not found, skipping ACL restoration")
+		return nil
+	}
+
+	// Decode the ACL data
+	decoded, err := base64.StdEncoding.DecodeString(aclData)
+	if err != nil {
+		return fmt.Errorf("failed to decode Windows ACL data: %w", err)
+	}
+
+	// Create temporary file for ACL data
+	tmpFile, err := os.CreateTemp("", "windows_acl")
+	if err != nil {
+		return fmt.Errorf("failed to create temp ACL file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(decoded); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write ACL data: %w", err)
+	}
+	tmpFile.Close()
+
+	// Apply ACL using icacls
+	cmd := exec.Command("icacls", path, "/restore", tmpFile.Name())
+	if err := cmd.Run(); err != nil {
+		logrus.Warnf("Failed to set Windows ACL for %s: %v", path, err)
+		return nil // Don't fail the entire operation for ACL issues
+	}
+
+	return nil
 }
