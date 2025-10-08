@@ -32,7 +32,27 @@ type BackupResult struct {
 }
 
 func NewService(cfg *config.Config, noNotify bool) (*Service, error) {
-	s3Client, err := storage.NewS3Client(cfg.S3.Bucket, cfg.S3.Prefix)
+	// Create S3 client with multipart upload settings from config
+	var s3Client *storage.S3Client
+	var err error
+
+	// Use config values if set, otherwise use defaults (100MB threshold, 10MB part size, 10 concurrency)
+	threshold := cfg.S3.MultipartThreshold
+	if threshold == 0 {
+		threshold = 100 * 1024 * 1024 // 100MB default
+	}
+
+	partSize := cfg.S3.MultipartPartSize
+	if partSize == 0 {
+		partSize = 10 * 1024 * 1024 // 10MB default
+	}
+
+	concurrency := cfg.S3.MultipartConcurrency
+	if concurrency == 0 {
+		concurrency = 10 // default
+	}
+
+	s3Client, err = storage.NewS3ClientWithMultipart(cfg.S3.Bucket, cfg.S3.Prefix, threshold, partSize, concurrency)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}

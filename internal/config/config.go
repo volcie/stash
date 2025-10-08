@@ -17,8 +17,11 @@ type Config struct {
 }
 
 type S3Config struct {
-	Bucket string `mapstructure:"bucket"`
-	Prefix string `mapstructure:"prefix"`
+	Bucket             string `mapstructure:"bucket"`
+	Prefix             string `mapstructure:"prefix"`
+	MultipartThreshold int64  `mapstructure:"multipart_threshold"` // in bytes, default 100MB
+	MultipartPartSize  int64  `mapstructure:"multipart_part_size"` // in bytes, default 10MB
+	MultipartConcurrency int  `mapstructure:"multipart_concurrency"` // default 10
 }
 
 type Service struct {

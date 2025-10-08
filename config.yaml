@@ -1,6 +1,9 @@
 s3:
   bucket: s3-bucket-name
   prefix: prefix/inside/bucket
+  multipart_threshold: 104857600 # 100MB - files >= this size use multipart upload (optional, default: 100MB)
+  multipart_part_size: 10485760  # 10MB - size of each upload part (optional, default: 10MB)
+  multipart_concurrency: 10      # concurrent part uploads (optional, default: 10)
 
   # backups will be stored in s3://s3-bucket-name/prefix/inside/bucket/[service name]/[path name]/
 services:

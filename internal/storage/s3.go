@@ -11,15 +11,20 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/sirupsen/logrus"
 )
 
 type S3Client struct {
-	client *s3.Client
-	bucket string
-	prefix string
+	client              *s3.Client
+	uploader            *manager.Uploader
+	bucket              string
+	prefix              string
+	multipartThreshold  int64
+	multipartPartSize   int64
+	multipartConcurrency int
 }
 
 type BackupInfo struct {
@@ -32,6 +37,10 @@ type BackupInfo struct {
 }
 
 func NewS3Client(bucket, prefix string) (*S3Client, error) {
+	return NewS3ClientWithMultipart(bucket, prefix, 100*1024*1024, 10*1024*1024, 10)
+}
+
+func NewS3ClientWithMultipart(bucket, prefix string, multipartThreshold, partSize int64, concurrency int) (*S3Client, error) {
 	// Validate environment variables
 	if err := validateS3Environment(); err != nil {
 		return nil, err
@@ -44,6 +53,12 @@ func NewS3Client(bucket, prefix string) (*S3Client, error) {
 
 	client := s3.NewFromConfig(cfg)
 
+	// Create uploader with custom settings
+	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
+		u.PartSize = partSize
+		u.Concurrency = concurrency
+	})
+
 	// Test connectivity
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -52,12 +67,17 @@ func NewS3Client(bucket, prefix string) (*S3Client, error) {
 		return nil, fmt.Errorf("failed to connect to S3: %w", err)
 	}
 
-	logrus.Debugf("Connected to S3-compatible storage")
+	logrus.Debugf("Connected to S3-compatible storage (multipart threshold: %d MB, part size: %d MB, concurrency: %d)",
+		multipartThreshold/(1024*1024), partSize/(1024*1024), concurrency)
 
 	return &S3Client{
-		client: client,
-		bucket: bucket,
-		prefix: prefix,
+		client:              client,
+		uploader:            uploader,
+		bucket:              bucket,
+		prefix:              prefix,
+		multipartThreshold:  multipartThreshold,
+		multipartPartSize:   partSize,
+		multipartConcurrency: concurrency,
 	}, nil
 }
 
@@ -71,30 +91,61 @@ func (s *S3Client) UploadWithTimestamp(ctx context.Context, reader io.Reader, se
 
 	logrus.Infof("Uploading backup to s3://%s/%s", s.bucket, key)
 
-	result, err := s.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-		Body:   reader,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to upload to S3: %w", err)
+	// Try to determine file size for multipart decision
+	var size int64
+	var useMultipart bool
+
+	// If reader is a file, we can get the size
+	if file, ok := reader.(*os.File); ok {
+		if stat, err := file.Stat(); err == nil {
+			size = stat.Size()
+			useMultipart = size >= s.multipartThreshold
+			if useMultipart {
+				logrus.Debugf("Using multipart upload (file size: %d MB)", size/(1024*1024))
+			}
+		}
 	}
 
-	// Get object info for size
-	head, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	})
-	if err != nil {
-		logrus.Warnf("Failed to get object size: %v", err)
+	var etag string
+
+	if useMultipart {
+		// Use multipart upload
+		result, err := s.uploader.Upload(ctx, &s3.PutObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(key),
+			Body:   reader,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to upload to S3: %w", err)
+		}
+		etag = strings.Trim(*result.ETag, "\"")
+	} else {
+		// Use regular PutObject for smaller files
+		result, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(key),
+			Body:   reader,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to upload to S3: %w", err)
+		}
+		etag = strings.Trim(*result.ETag, "\"")
+	}
+
+	// Get object info for size (if we didn't already have it)
+	if size == 0 {
+		head, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(key),
+		})
+		if err != nil {
+			logrus.Warnf("Failed to get object size: %v", err)
+		} else if head.ContentLength != nil {
+			size = *head.ContentLength
+		}
 	}
 
 	backupTime, _ := time.Parse("20060102-150405", timestamp)
-
-	var size int64
-	if head.ContentLength != nil {
-		size = *head.ContentLength
-	}
 
 	return &BackupInfo{
 		Service: service,
@@ -102,7 +153,7 @@ func (s *S3Client) UploadWithTimestamp(ctx context.Context, reader io.Reader, se
 		Date:    backupTime,
 		Key:     key,
 		Size:    size,
-		ETag:    strings.Trim(*result.ETag, "\""),
+		ETag:    etag,
 	}, nil
 }
 
