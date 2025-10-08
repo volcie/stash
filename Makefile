@@ -12,7 +12,7 @@ BUILD_DIR := build
 DIST_DIR := dist
 
 # Go build flags
-LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME) -w -s"
+LDFLAGS := -ldflags "-X github.com/volcie/stash/cmd.version=$(VERSION) -w -s"
 GOFLAGS := -trimpath
 
 # Cross-platform build targets

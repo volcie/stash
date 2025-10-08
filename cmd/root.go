@@ -12,6 +12,7 @@ var (
 	configPath string
 	verbose    bool
 	noNotify   bool
+	version    = "dev" // set via ldflags during build
 )
 
 func newRootCmd() *cobra.Command {
@@ -19,6 +20,7 @@ func newRootCmd() *cobra.Command {
 		Use:          "stash",
 		Short:        "Backup utilities for revolt-rp.net",
 		Long:         "A CLI tool for backing up files to S3 with Discord notifications",
+		Version:      version,
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			logrus.SetFormatter(&logrus.TextFormatter{ForceColors: true, DisableTimestamp: true})
@@ -46,6 +48,7 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&configPath, "config", "", "config file path")
 	cmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "verbose output")
 	cmd.PersistentFlags().BoolVar(&noNotify, "no-notify", false, "skip Discord notifications")
+	cmd.SetVersionTemplate("stash version {{.Version}}\n")
 
 	cmd.AddCommand(newBackupCmd())
 	cmd.AddCommand(newRestoreCmd())
